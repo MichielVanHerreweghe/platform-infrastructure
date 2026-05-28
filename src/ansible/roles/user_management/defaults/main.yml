@@ -1,0 +1,12 @@
+---
+# List of users to manage on the VM.
+#
+# Each entry supports:
+#   name:      (required) Linux account name.
+#   state:     'present' (default) or 'absent'. Absent removes the account and its home directory.
+#   groups:    List of supplementary Linux groups to add the user to (appended, not exclusive).
+#   sudo:      true to grant passwordless sudo via /etc/sudoers.d/<name>. Defaults to false.
+#   shell:     Login shell. Defaults to /bin/bash.
+#   ssh_keys:  List of authorized public keys. The user's authorized_keys file is rewritten
+#              to exactly this list (managed exclusively by this role).
+users: []

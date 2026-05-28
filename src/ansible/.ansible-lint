@@ -1,0 +1,11 @@
+---
+profile: production
+
+exclude_paths:
+  - .cache/
+  - collections/
+
+skip_list: []
+
+warn_list:
+  - experimental
