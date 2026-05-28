@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: common
+  author: Michiel Van Herreweghe
+  description: Base system setup (timezone, NTP, journald, base packages)
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms: []
+
+dependencies: []

@@ -1,0 +1,4 @@
+// Managed by Ansible (auto_updates role). Do not edit by hand.
+APT::Periodic::Update-Package-Lists "{{ auto_updates_apt_periodic_update }}";
+APT::Periodic::Unattended-Upgrade "{{ auto_updates_apt_periodic_unattended }}";
+APT::Periodic::AutocleanInterval "7";

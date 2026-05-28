@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: firewall
+  author: Michiel Van Herreweghe
+  description: UFW firewall with K3s + Cilium aware peer rules
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms: []
+
+dependencies: []

@@ -1,0 +1,36 @@
+---
+- name: Fail loudly if the SSH allow-list is empty
+  ansible.builtin.assert:
+    that:
+      - ssh_allow_users | length > 0
+    fail_msg: >-
+      ssh_allow_users is empty. With AllowUsers enforced, an empty list means
+      nobody (not even root) could log in once sshd reloads. Set
+      ssh_allow_users in group_vars/all.yml before applying ssh_hardening.
+
+- name: Ensure the legal banner is in place
+  ansible.builtin.copy:
+    dest: /etc/issue.net
+    content: "{{ ssh_banner_text }}"
+    owner: root
+    group: root
+    mode: "0644"
+
+# Drop-in lives in sshd_config.d and is loaded before the distro's default
+# include, so these directives win. validate runs sshd in test mode against
+# the staged file before it is moved into place; a syntactically invalid
+# config cannot brick the host.
+- name: Install hardened sshd_config drop-in
+  ansible.builtin.template:
+    src: 00-hardening.conf.j2
+    dest: /etc/ssh/sshd_config.d/00-hardening.conf
+    owner: root
+    group: root
+    mode: "0644"
+    validate: "sshd -t -f %s"
+  notify: Restart sshd
+
+# Restart immediately rather than waiting for end-of-play handlers. We want
+# sshd on the new port before any later task could fail mid-run.
+- name: Flush handlers so sshd restarts before we move on
+  ansible.builtin.meta: flush_handlers

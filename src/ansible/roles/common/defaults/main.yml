@@ -1,0 +1,23 @@
+---
+# System timezone. Set to a valid tz database name (e.g. Europe/Brussels, UTC).
+timezone: UTC
+
+# Base packages installed on every cluster host. Kept intentionally small:
+# anything cluster-workload-specific belongs in its own role.
+common_base_packages:
+  - ca-certificates
+  - curl
+  - gnupg
+  - htop
+  - jq
+  - lsb-release
+  - net-tools
+  - rsync
+  - tcpdump
+  - vim
+
+# Persist journald logs across reboots and bound disk usage. K3s/Cilium are
+# chatty; uncapped journals fill /var fast on small VPS disks.
+common_journald_storage: persistent
+common_journald_max_use: 1G
+common_journald_max_file_size: 100M

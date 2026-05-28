@@ -1,0 +1,57 @@
+---
+# Kernel hardening sysctls. Anything K3s/Cilium needs lives in the k3s_prereqs
+# role; the split keeps cluster-required settings from being labelled as
+# "hardening" and accidentally tightened later.
+kernel_hardening_sysctls:
+  # Address-space and pointer hiding.
+  kernel.kptr_restrict: 2
+  kernel.dmesg_restrict: 1
+  kernel.perf_event_paranoid: 3
+  kernel.yama.ptrace_scope: 1
+  kernel.kexec_load_disabled: 1
+  # Filesystem hardening (mitigates symlink/hardlink/fifo TOCTOU attacks).
+  fs.protected_hardlinks: 1
+  fs.protected_symlinks: 1
+  fs.protected_fifos: 2
+  fs.protected_regular: 2
+  fs.suid_dumpable: 0
+  # Network stack hardening. Settings here must not conflict with k3s_prereqs.
+  net.ipv4.conf.all.accept_redirects: 0
+  net.ipv4.conf.default.accept_redirects: 0
+  net.ipv4.conf.all.secure_redirects: 0
+  net.ipv4.conf.default.secure_redirects: 0
+  net.ipv4.conf.all.send_redirects: 0
+  net.ipv4.conf.default.send_redirects: 0
+  net.ipv4.conf.all.accept_source_route: 0
+  net.ipv4.conf.default.accept_source_route: 0
+  net.ipv4.conf.all.log_martians: 1
+  net.ipv4.icmp_echo_ignore_broadcasts: 1
+  net.ipv4.icmp_ignore_bogus_error_responses: 1
+  net.ipv4.tcp_syncookies: 1
+  net.ipv6.conf.all.accept_redirects: 0
+  net.ipv6.conf.default.accept_redirects: 0
+  net.ipv6.conf.all.accept_source_route: 0
+  net.ipv6.conf.default.accept_source_route: 0
+
+# Filesystem kernel modules that have no business on a server. Disabling them
+# shrinks the kernel attack surface (multiple historical CVEs in these).
+# squashfs is intentionally NOT blacklisted: snapd / some container tooling
+# rely on it. overlay is required by containerd and is never blacklisted.
+kernel_hardening_blocked_modules:
+  - cramfs
+  - freevxfs
+  - jffs2
+  - hfs
+  - hfsplus
+  - udf
+  - usb-storage
+  - dccp
+  - sctp
+  - rds
+  - tipc
+
+# login.defs hardening.
+kernel_hardening_password_max_days: 365
+kernel_hardening_password_min_days: 1
+kernel_hardening_password_warn_age: 14
+kernel_hardening_umask: "027"

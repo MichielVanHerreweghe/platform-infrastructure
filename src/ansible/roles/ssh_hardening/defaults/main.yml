@@ -1,0 +1,44 @@
+---
+# Listening port. Ubuntu 26.04's sshd reads everything in /etc/ssh/sshd_config.d/
+# alphabetically; the first directive wins, so this drop-in (00-) overrides
+# the distro default of 22.
+ssh_port: 22
+
+# Whitelist of usernames allowed to log in. Anyone not in this list is denied
+# regardless of key material. Set in group_vars/all.yml.
+ssh_allow_users: []
+
+# Modern crypto only. These are the OpenSSH 9.x defaults minus the legacy
+# algorithms (sha1 MACs, cbc ciphers, dsa/rsa host keys < 2048).
+ssh_kex_algorithms:
+  - sntrup761x25519-sha512@openssh.com
+  - curve25519-sha256
+  - curve25519-sha256@libssh.org
+  - diffie-hellman-group16-sha512
+  - diffie-hellman-group18-sha512
+ssh_ciphers:
+  - chacha20-poly1305@openssh.com
+  - aes256-gcm@openssh.com
+  - aes128-gcm@openssh.com
+  - aes256-ctr
+ssh_macs:
+  - hmac-sha2-512-etm@openssh.com
+  - hmac-sha2-256-etm@openssh.com
+  - umac-128-etm@openssh.com
+ssh_host_key_algorithms:
+  - ssh-ed25519
+  - ssh-ed25519-cert-v01@openssh.com
+  - rsa-sha2-512
+  - rsa-sha2-256
+
+ssh_login_grace_time: 30
+ssh_max_auth_tries: 3
+ssh_max_sessions: 5
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+
+ssh_banner_text: |
+  ----------------------------------------------------------------------
+   Authorized access only. Activity on this system is logged.
+   Disconnect immediately if you are not an authorized user.
+  ----------------------------------------------------------------------

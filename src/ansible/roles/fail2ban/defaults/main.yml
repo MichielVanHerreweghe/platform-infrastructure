@@ -1,0 +1,9 @@
+---
+fail2ban_bantime: 1h
+fail2ban_findtime: 10m
+fail2ban_maxretry: 5
+
+# Networks that must never be banned, even on a configuration mistake.
+fail2ban_ignoreip:
+  - 127.0.0.1/8
+  - ::1
