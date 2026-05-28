@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: k3s_prereqs
+  author: Michiel Van Herreweghe
+  description: Kernel, sysctl, swap, BPF-fs and ulimit prerequisites for K3s + Cilium
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms: []
+
+dependencies: []

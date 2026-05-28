@@ -1,7 +1,7 @@
 *.retry
 .cache/
-collections/ansible_collections/
-roles/external/
+**/collections/ansible_collections/
+**/roles/external/
 *.pyc
 __pycache__/
 .vault_pass

@@ -8,6 +8,10 @@ deployer_user:
     - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDHcdcpUA74ba55uK7iIVNHSlJXA0PoKmAeQYwAsGp2yF241ISkrY2O0qBzKM9ySY+G4LwFPtxgIFGigC1CZihp5B/tRS3qmVK0El87lPzHgtw3VGbFumkRlEwBWkHnubwIOCLNu1vrllx7zOv/jU4a78cU0UyRmU1mAJU4VrdyxCN5QXpPvx0dGx+DPgblk+a8K1MSyyBZtKxcl4JoTpWw1PocRlhtbJ/WMy9EyVZW3xfWHYj9xLJUpj36qROK6zn6zY9HDGcQx+06ZvR5bEOKBuR6RmKU115xdacmprB34EOIs7ZjwE27s7091zAGIBMNHRKTc/b/MI3zbo+OBg8yaFpfqhYln8pPvb63oxfiaPlpsc51wS7QvKHTDZUtNXou/5IwIuAsuRha0Hpp1f2LNGeWc6G/V8titoA856ufzt3GU48OXLgZaYeQkGvQRYhDdFlvGJpJ4knVdqZ58jfYvnbJR2ygsXAYsJmXRmWvvoKtMC80dIZv9Zqu1S2pPQE="
 
 ansible_user: "{{ deployer_user.name }}"
+# Inventory connects via the hardened SSH port. During the first run that
+# migrates an existing host from 22 -> ssh_port, override on the CLI:
+#   ansible-playbook cluster-initialization.yml -e ansible_port=22
+ansible_port: "{{ ssh_port }}"
 
 # Users managed by the user_management role.
 # See roles/user_management/defaults/main.yml for the full schema.
@@ -21,3 +25,48 @@ users:
     sudo: true
     ssh_keys:
       - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDNpyu+RPyIDr9IZk0YyxjxWF+3cMDrMl7dT83Ar6jyQZWz24VoH8BCkl1QGgkqRoAkQArHJrRQSnKwryDnUhEpACdg8rm1bSXf+xNlPvYtSBTfGUGjcopPQr6j7GXDSIxyl9GcIDupebvtGOWxPTjhyPF7XCNADhDvtW2Tm9pDc18kbQ8fB+OZ2UU2s5RqkVaLHXY+QLUkUFN7+4tdQGC2Ofx5jwspOFbiOU1s9UBUXRB9hajhTtZAYdGhL3P/EnjBXVBqnvIZI6YYUdJbQQKHeKUUmvA5wKuMfhBcUBWBwxBib3NCE1hgJYT/Q+EFLiaBosSZeo/hzVPP2EExwQy+IFzBCZocbqKr356j2ftdIAVonv1cSgO6DBaVF3KAJihBUmdin11RsNPvCO30d6aNaVGg1uK8VRj6OYE0wEAi30dxPaLpHfM1XoWwVfd/s6Ylt+z9YzpTqzbulghAYp79kzUL3PpSobS4q/vy5U72gx5c6yq2T6/kvCNiw71K6fk="
+
+# ---------------------------------------------------------------------------
+# Hardening configuration. Each block maps onto a single role; the role's
+# defaults/main.yml documents every field. Values here override defaults.
+# ---------------------------------------------------------------------------
+
+# Timezone / base packages / journald.
+timezone: Europe/Brussels
+
+# SSH posture.
+ssh_port: 2222
+ssh_allow_users:
+  - "{{ deployer_user.name }}"
+  - michiel
+
+# Firewall: per-host cluster peers are auto-derived from the cluster_servers
+# group below; these are the externally exposed services. Cilium uses VXLAN
+# tunnel mode by default (8472/udp) and a health endpoint (4240/tcp).
+firewall_public_tcp_ports:
+  - 80    # ingress HTTP
+  - 443   # ingress HTTPS
+firewall_public_udp_ports: []
+# Ports allowed only between cluster_servers peers.
+firewall_cluster_tcp_ports:
+  - 6443      # K3s API
+  - 10250     # kubelet
+  - 2379      # etcd client (HA control plane)
+  - 2380      # etcd peer
+  - 4240      # cilium-agent health
+  - 4244      # hubble server
+  - 4245      # hubble relay
+  - 9962      # cilium-agent prometheus metrics
+  - 9963      # cilium-operator prometheus metrics
+  - 9964      # hubble metrics
+firewall_cluster_udp_ports:
+  - 8472      # cilium VXLAN
+  - 51871     # cilium WireGuard (if encryption enabled later)
+
+# unattended-upgrades.
+auto_updates_reboot: false
+
+# Kernel hardening is on by default; tweakables live in the role's defaults.
+
+# K3s + Cilium prerequisites are on by default; tweakables live in the role's
+# defaults. Cilium with kube-proxy replacement does not use br_netfilter.

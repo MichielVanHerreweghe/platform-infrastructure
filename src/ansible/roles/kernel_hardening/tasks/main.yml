@@ -1,0 +1,71 @@
+---
+- name: Apply hardening sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/60-hardening.conf
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ kernel_hardening_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Blacklist unused/legacy kernel modules
+  ansible.builtin.copy:
+    dest: /etc/modprobe.d/60-hardening-blacklist.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (kernel_hardening role). Do not edit by hand.
+      {% for module in kernel_hardening_blocked_modules %}
+      install {{ module }} /bin/true
+      blacklist {{ module }}
+      {% endfor %}
+
+- name: Harden login.defs password aging and umask
+  ansible.builtin.lineinfile:
+    path: /etc/login.defs
+    regexp: "{{ item.regexp }}"
+    line: "{{ item.line }}"
+    state: present
+    backrefs: false
+  loop:
+    - { regexp: '^\s*PASS_MAX_DAYS\s', line: "PASS_MAX_DAYS   {{ kernel_hardening_password_max_days }}" }
+    - { regexp: '^\s*PASS_MIN_DAYS\s', line: "PASS_MIN_DAYS   {{ kernel_hardening_password_min_days }}" }
+    - { regexp: '^\s*PASS_WARN_AGE\s', line: "PASS_WARN_AGE   {{ kernel_hardening_password_warn_age }}" }
+    - { regexp: '^\s*UMASK\s',         line: "UMASK           {{ kernel_hardening_umask }}" }
+  loop_control:
+    label: "{{ item.regexp }}"
+
+- name: Disable core dumps via limits.conf
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/60-hardening-coredump.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (kernel_hardening role).
+      *  hard  core  0
+      *  soft  core  0
+
+- name: Ensure systemd-coredump drop-in directory exists
+  ansible.builtin.file:
+    path: /etc/systemd/coredump.conf.d
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Disable systemd-coredump capturing
+  ansible.builtin.copy:
+    dest: /etc/systemd/coredump.conf.d/60-disable.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      [Coredump]
+      Storage=none
+      ProcessSizeMax=0
+  notify: Reload systemd-coredump

@@ -1,0 +1,10 @@
+---
+galaxy_info:
+  role_name: fail2ban
+  author: Michiel Van Herreweghe
+  description: SSH brute-force protection with fail2ban
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms: []
+
+dependencies: []

@@ -1,0 +1,102 @@
+---
+- name: Install ufw
+  ansible.builtin.apt:
+    name: ufw
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+# K3s + Cilium pass pod traffic through the FORWARD chain. ufw defaults this
+# to DROP, which silently breaks all east-west networking. Flip it before
+# enabling ufw.
+- name: Set DEFAULT_FORWARD_POLICY in /etc/default/ufw
+  ansible.builtin.lineinfile:
+    path: /etc/default/ufw
+    regexp: '^\s*DEFAULT_FORWARD_POLICY='
+    line: 'DEFAULT_FORWARD_POLICY="{{ firewall_default_forward_policy }}"'
+    state: present
+  notify: Reload ufw
+
+- name: Set ufw default policies
+  community.general.ufw:
+    direction: "{{ item.direction }}"
+    policy: "{{ item.policy }}"
+  loop:
+    - { direction: incoming, policy: "{{ firewall_default_input_policy }}" }
+    - { direction: outgoing, policy: "{{ firewall_default_output_policy }}" }
+    - { direction: routed,   policy: "{{ firewall_default_routed_policy }}" }
+  loop_control:
+    label: "{{ item.direction }}"
+
+# Allow the SSH port we're moving TO. Add this BEFORE enabling ufw so a fresh
+# host comes up reachable.
+- name: Allow SSH on ssh_port
+  community.general.ufw:
+    rule: allow
+    port: "{{ ssh_port }}"
+    proto: tcp
+    comment: ssh (hardened)
+
+# Transitional safeguard: when ansible_port differs from ssh_port we're in
+# the middle of migrating off port 22. Keep the inbound port we're currently
+# connected on open so the run can't strand the host behind a closed port.
+# After migration, ansible_port == ssh_port and this rule is omitted.
+- name: Allow inbound on the active ansible_port (migration window)
+  community.general.ufw:
+    rule: allow
+    port: "{{ ansible_port }}"
+    proto: tcp
+    comment: ssh (migration window)
+  when: ansible_port | int != ssh_port | int
+
+- name: Allow public TCP ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: tcp
+    comment: public tcp
+  loop: "{{ firewall_public_tcp_ports }}"
+
+- name: Allow public UDP ports
+  community.general.ufw:
+    rule: allow
+    port: "{{ item }}"
+    proto: udp
+    comment: public udp
+  loop: "{{ firewall_public_udp_ports }}"
+
+# Cluster-internal ports: only opened to other nodes in the peer group. Each
+# peer's IPv4 is taken from facts (ansible_default_ipv4.address), which means
+# the playbook must run with gather_facts on every cluster host before the
+# rules become accurate. The peer self is skipped.
+- name: Allow cluster TCP ports from each peer
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ hostvars[item.0].ansible_default_ipv4.address }}"
+    port: "{{ item.1 }}"
+    proto: tcp
+    comment: "cluster peer {{ item.0 }}"
+  loop: "{{ (groups[firewall_cluster_peer_group] | default([])) | product(firewall_cluster_tcp_ports) | list }}"
+  loop_control:
+    label: "{{ item.0 }}:{{ item.1 }}/tcp"
+  when:
+    - item.0 != inventory_hostname
+    - hostvars[item.0].ansible_default_ipv4 is defined
+
+- name: Allow cluster UDP ports from each peer
+  community.general.ufw:
+    rule: allow
+    from_ip: "{{ hostvars[item.0].ansible_default_ipv4.address }}"
+    port: "{{ item.1 }}"
+    proto: udp
+    comment: "cluster peer {{ item.0 }}"
+  loop: "{{ (groups[firewall_cluster_peer_group] | default([])) | product(firewall_cluster_udp_ports) | list }}"
+  loop_control:
+    label: "{{ item.0 }}:{{ item.1 }}/udp"
+  when:
+    - item.0 != inventory_hostname
+    - hostvars[item.0].ansible_default_ipv4 is defined
+
+- name: Enable ufw
+  community.general.ufw:
+    state: enabled

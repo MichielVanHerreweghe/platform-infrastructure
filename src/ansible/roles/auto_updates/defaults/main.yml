@@ -1,0 +1,20 @@
+---
+# Only the security archive is enabled. -updates / -backports stay manual.
+auto_updates_origins:
+  - "${distro_id}:${distro_codename}-security"
+  - "${distro_id}ESMApps:${distro_codename}-apps-security"
+  - "${distro_id}ESM:${distro_codename}-infra-security"
+
+# Run unattended-upgrades daily; refresh package lists every day too.
+auto_updates_apt_periodic_update: 1
+auto_updates_apt_periodic_unattended: 1
+
+# Reboot policy. Default off so the K3s control plane doesn't bounce
+# unexpectedly. Override per-host via host_vars if you want auto-reboot.
+auto_updates_reboot: false
+auto_updates_reboot_time: "03:00"
+
+# Mail notifications: only when something fails. Leave the address empty to
+# disable mail entirely.
+auto_updates_mail: ""
+auto_updates_mail_report: "only-on-error"

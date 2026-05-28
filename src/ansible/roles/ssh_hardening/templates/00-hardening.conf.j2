@@ -1,0 +1,40 @@
+# Managed by Ansible (ssh_hardening role). Do not edit by hand.
+# Lives in /etc/ssh/sshd_config.d/, loaded before Ubuntu's default include so
+# every directive here takes precedence.
+
+Port {{ ssh_port }}
+AddressFamily any
+
+PermitRootLogin no
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+UsePAM yes
+AuthenticationMethods publickey
+PubkeyAuthentication yes
+
+AllowUsers {{ ssh_allow_users | join(' ') }}
+
+KexAlgorithms {{ ssh_kex_algorithms | join(',') }}
+Ciphers {{ ssh_ciphers | join(',') }}
+MACs {{ ssh_macs | join(',') }}
+HostKeyAlgorithms {{ ssh_host_key_algorithms | join(',') }}
+
+LoginGraceTime {{ ssh_login_grace_time }}
+MaxAuthTries {{ ssh_max_auth_tries }}
+MaxSessions {{ ssh_max_sessions }}
+
+ClientAliveInterval {{ ssh_client_alive_interval }}
+ClientAliveCountMax {{ ssh_client_alive_count_max }}
+
+X11Forwarding no
+AllowAgentForwarding no
+AllowTcpForwarding no
+PermitTunnel no
+GatewayPorts no
+PrintMotd no
+TCPKeepAlive yes
+UseDNS no
+Compression no
+
+Banner /etc/issue.net

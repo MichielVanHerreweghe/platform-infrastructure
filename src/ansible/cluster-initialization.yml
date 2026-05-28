@@ -1,7 +1,19 @@
 ---
+# Order matters. Users are created first so that ssh_hardening can lock the
+# allow-list down to them. The firewall opens ssh_port before ssh_hardening
+# restarts sshd, so an in-flight session is never stranded behind a closed
+# port. ssh_hardening runs last among connectivity-sensitive roles so that a
+# mid-run failure leaves the host reachable on the previous configuration.
 - name: Cluster initialization playbook
   hosts: cluster_servers
   gather_facts: true
   become: true
   roles:
+    - common
     - user_management
+    - kernel_hardening
+    - k3s_prereqs
+    - auto_updates
+    - fail2ban
+    - firewall
+    - ssh_hardening

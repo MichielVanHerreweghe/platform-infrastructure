@@ -1,0 +1,21 @@
+---
+# Ports exposed to the public internet (tcp/udp). Cluster-internal ports live
+# under firewall_cluster_*_ports and are only opened to peer node IPs.
+firewall_public_tcp_ports: []
+firewall_public_udp_ports: []
+firewall_cluster_tcp_ports: []
+firewall_cluster_udp_ports: []
+
+# Inventory group whose members are treated as cluster peers. Each peer's
+# ansible_host (resolved to an IPv4 address via facts) is added to the allow
+# list for cluster_* ports.
+firewall_cluster_peer_group: cluster_servers
+
+# DEFAULT_FORWARD_POLICY in /etc/default/ufw. K3s + Cilium need forwarded
+# traffic permitted; ufw's stock DROP would break pod networking.
+firewall_default_forward_policy: ACCEPT
+
+# Default policies on the three built-in chains.
+firewall_default_input_policy: deny
+firewall_default_output_policy: allow
+firewall_default_routed_policy: allow

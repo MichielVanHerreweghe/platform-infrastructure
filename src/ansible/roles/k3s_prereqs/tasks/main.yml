@@ -1,0 +1,72 @@
+---
+- name: Disable swap immediately
+  ansible.builtin.command: swapoff -a
+  when: ansible_facts.swaptotal_mb | default(0) | int > 0
+  changed_when: ansible_facts.swaptotal_mb | default(0) | int > 0
+
+- name: Remove swap entries from /etc/fstab so swap stays off after reboot
+  ansible.builtin.replace:
+    path: /etc/fstab
+    regexp: '^([^#].*\sswap\s.*)$'
+    replace: '# \1  # disabled by k3s_prereqs'
+
+- name: Apply K3s + Cilium sysctls
+  ansible.posix.sysctl:
+    name: "{{ item.key }}"
+    value: "{{ item.value }}"
+    sysctl_file: /etc/sysctl.d/70-k3s-cilium.conf
+    sysctl_set: true
+    state: present
+    reload: true
+  loop: "{{ k3s_prereqs_sysctls | dict2items }}"
+  loop_control:
+    label: "{{ item.key }}"
+
+- name: Ensure required kernel modules are loaded now
+  community.general.modprobe:
+    name: "{{ item }}"
+    state: present
+  loop: "{{ k3s_prereqs_kernel_modules }}"
+
+- name: Ensure required kernel modules are loaded on every boot
+  ansible.builtin.copy:
+    dest: /etc/modules-load.d/k3s-cilium.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (k3s_prereqs role).
+      {% for module in k3s_prereqs_kernel_modules %}
+      {{ module }}
+      {% endfor %}
+
+- name: Ensure BPF filesystem mount point exists
+  ansible.builtin.file:
+    path: "{{ k3s_prereqs_bpffs_path }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Mount BPF filesystem (Cilium prerequisite)
+  ansible.posix.mount:
+    path: "{{ k3s_prereqs_bpffs_path }}"
+    src: bpffs
+    fstype: bpf
+    opts: rw,nosuid,nodev,noexec,relatime,mode=700
+    state: mounted
+
+- name: Raise file/proc limits for cluster workloads
+  ansible.builtin.copy:
+    dest: /etc/security/limits.d/70-k3s.conf
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible (k3s_prereqs role).
+      *  soft  nofile  {{ k3s_prereqs_nofile_soft }}
+      *  hard  nofile  {{ k3s_prereqs_nofile_hard }}
+      *  soft  nproc   {{ k3s_prereqs_nproc_soft }}
+      *  hard  nproc   {{ k3s_prereqs_nproc_hard }}
+      root soft nofile {{ k3s_prereqs_nofile_soft }}
+      root hard nofile {{ k3s_prereqs_nofile_hard }}
