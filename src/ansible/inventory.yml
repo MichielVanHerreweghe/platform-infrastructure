@@ -1,0 +1,9 @@
+---
+all:
+  hosts:
+    vps-001:
+      ansible_host: contabo-vps-001
+  children:
+    cluster_servers:
+      hosts:
+        vps-001:

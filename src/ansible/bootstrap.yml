@@ -1,0 +1,31 @@
+---
+# One-shot bootstrap: creates the deployer account on a fresh VM so that
+# subsequent runs of site.yml can connect as deployer over SSH key auth.
+#
+# Run once per new host with the initial sudo-capable account and its password.
+# Defaults to root; override per-distro with -e bootstrap_user=<name>:
+#
+#   ansible-playbook bootstrap.yml --ask-pass --ask-become-pass
+#   ansible-playbook bootstrap.yml -e bootstrap_user=ubuntu --ask-pass --ask-become-pass
+#
+# -u on the CLI does NOT work here: ansible_user is set in group_vars/all.yml
+# (to deployer) and group_vars beat the -u flag in Ansible's precedence.
+#
+# After this completes, site.yml uses ansible_user=deployer from group_vars
+# and re-asserts the deployer (plus any other users) idempotently.
+- name: Bootstrap deployer account
+  hosts: all
+  gather_facts: true
+  become: true
+  vars:
+    # Override ansible_user from group_vars/all.yml: the deployer doesn't exist
+    # yet on a fresh host, so connect as the initial sudo-capable account.
+    ansible_user: "{{ bootstrap_user | default('root') }}"
+    # Narrow the user_management role to only the deployer for the bootstrap run.
+    users:
+      - name: "{{ deployer_user.name }}"
+        groups: "{{ deployer_user.groups | default([]) }}"
+        sudo: true
+        ssh_keys: "{{ deployer_user.ssh_keys }}"
+  roles:
+    - user_management

@@ -1,0 +1,23 @@
+---
+# The deployer account Ansible connects as for all non-bootstrap runs.
+# Bootstrap.yml creates this account on a fresh VM; site.yml re-asserts it.
+deployer_user:
+  name: deployer
+  groups: []
+  ssh_keys:
+    - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDHcdcpUA74ba55uK7iIVNHSlJXA0PoKmAeQYwAsGp2yF241ISkrY2O0qBzKM9ySY+G4LwFPtxgIFGigC1CZihp5B/tRS3qmVK0El87lPzHgtw3VGbFumkRlEwBWkHnubwIOCLNu1vrllx7zOv/jU4a78cU0UyRmU1mAJU4VrdyxCN5QXpPvx0dGx+DPgblk+a8K1MSyyBZtKxcl4JoTpWw1PocRlhtbJ/WMy9EyVZW3xfWHYj9xLJUpj36qROK6zn6zY9HDGcQx+06ZvR5bEOKBuR6RmKU115xdacmprB34EOIs7ZjwE27s7091zAGIBMNHRKTc/b/MI3zbo+OBg8yaFpfqhYln8pPvb63oxfiaPlpsc51wS7QvKHTDZUtNXou/5IwIuAsuRha0Hpp1f2LNGeWc6G/V8titoA856ufzt3GU48OXLgZaYeQkGvQRYhDdFlvGJpJ4knVdqZ58jfYvnbJR2ygsXAYsJmXRmWvvoKtMC80dIZv9Zqu1S2pPQE="
+
+ansible_user: "{{ deployer_user.name }}"
+
+# Users managed by the user_management role.
+# See roles/user_management/defaults/main.yml for the full schema.
+# The deployer is included so its authorized_keys stays in sync.
+users:
+  - name: "{{ deployer_user.name }}"
+    groups: "{{ deployer_user.groups }}"
+    sudo: true
+    ssh_keys: "{{ deployer_user.ssh_keys }}"
+  - name: michiel
+    sudo: true
+    ssh_keys:
+      - "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABgQDNpyu+RPyIDr9IZk0YyxjxWF+3cMDrMl7dT83Ar6jyQZWz24VoH8BCkl1QGgkqRoAkQArHJrRQSnKwryDnUhEpACdg8rm1bSXf+xNlPvYtSBTfGUGjcopPQr6j7GXDSIxyl9GcIDupebvtGOWxPTjhyPF7XCNADhDvtW2Tm9pDc18kbQ8fB+OZ2UU2s5RqkVaLHXY+QLUkUFN7+4tdQGC2Ofx5jwspOFbiOU1s9UBUXRB9hajhTtZAYdGhL3P/EnjBXVBqnvIZI6YYUdJbQQKHeKUUmvA5wKuMfhBcUBWBwxBib3NCE1hgJYT/Q+EFLiaBosSZeo/hzVPP2EExwQy+IFzBCZocbqKr356j2ftdIAVonv1cSgO6DBaVF3KAJihBUmdin11RsNPvCO30d6aNaVGg1uK8VRj6OYE0wEAi30dxPaLpHfM1XoWwVfd/s6Ylt+z9YzpTqzbulghAYp79kzUL3PpSobS4q/vy5U72gx5c6yq2T6/kvCNiw71K6fk="
