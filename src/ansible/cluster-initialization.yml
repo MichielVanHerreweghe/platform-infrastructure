@@ -4,6 +4,8 @@
 # restarts sshd, so an in-flight session is never stranded behind a closed
 # port. ssh_hardening runs last among connectivity-sensitive roles so that a
 # mid-run failure leaves the host reachable on the previous configuration.
+# k3s_cluster_init runs after the host posture is final; it depends on the
+# firewall's cluster_servers peer rules and the hardened SSH session.
 - name: Cluster initialization playbook
   hosts: cluster_servers
   gather_facts: true
@@ -17,3 +19,4 @@
     - fail2ban
     - firewall
     - ssh_hardening
+    - k3s_cluster_init

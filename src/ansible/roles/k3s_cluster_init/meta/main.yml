@@ -1,0 +1,13 @@
+---
+galaxy_info:
+  role_name: k3s_cluster_init
+  author: Michiel Van Herreweghe
+  description: K3s cluster bootstrap with embedded etcd, kube-vip ARP HA, and Cilium kube-proxy replacement
+  license: MIT
+  min_ansible_version: "2.14"
+  platforms: []
+
+# Ordering relative to k3s_prereqs, firewall, and ssh_hardening is enforced
+# by cluster-initialization.yml. Declaring meta dependencies here would hide
+# that ordering from the playbook and re-run prereq tasks in pre-tasks phase.
+dependencies: []

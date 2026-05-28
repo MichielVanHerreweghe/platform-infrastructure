@@ -70,3 +70,21 @@ auto_updates_reboot: false
 
 # K3s + Cilium prerequisites are on by default; tweakables live in the role's
 # defaults. Cilium with kube-proxy replacement does not use br_netfilter.
+
+# K3s cluster bootstrap (kube-vip ARP HA + embedded etcd + Cilium kpr).
+# - apiserver_vip is the floating control-plane IP; it must be a free IPv4
+#   on the same L2 as every node's eth1 (the Contabo Private Network).
+#   Replace the placeholder below with your real LAN IP before the first run.
+# - token is the shared k3s server join secret. Uncomment and paste the
+#   vault block produced by:
+#     ansible-vault encrypt_string '<random-token>' --name k3s_cluster_init_token
+#   The role asserts the variable is defined; leaving it commented forces a
+#   fast, loud failure rather than booting with a placeholder secret.
+k3s_cluster_init_apiserver_vip: "10.0.0.33"
+k3s_cluster_init_token: !vault |
+  $ANSIBLE_VAULT;1.1;AES256
+  36343462316462646363626664316664323166653038356432353939333462353433636339313133
+  6437653831333638373331343763613863343337363936640a306233633634656435653534343664
+  31356233373162666237373366313464633934663665383533626137643366616265393333393136
+  3138316432653930650a376430356663346362336266653764313261313662646464623961663538
+  66643231363930353065396234656332346635333630616432343831383037393337

@@ -1,0 +1,131 @@
+---
+# ---------------------------------------------------------------------------
+# REQUIRED variables. The role asserts these are set before anything else.
+# Define both in group_vars/all.yml (the token vault-encrypted).
+# ---------------------------------------------------------------------------
+# Floating VIP for the Kubernetes API. Managed by kube-vip in ARP/L2 mode.
+# Must be a free IPv4 on the same Layer-2 broadcast domain as the cluster's
+# private NIC (eth1 by default — the Contabo Private Network).
+#   k3s_cluster_init_apiserver_vip: "10.0.0.50"
+#
+# Shared k3s server join token. Vault-encrypt:
+#   ansible-vault encrypt_string '<token>' --name k3s_cluster_init_token
+#   k3s_cluster_init_token: !vault | ...
+
+# ---------------------------------------------------------------------------
+# k3s install pin. Re-running the installer with the same version is a no-op
+# (the upstream installer detects the existing binary and exits).
+# ---------------------------------------------------------------------------
+k3s_cluster_init_version: "v1.36.1+k3s1"
+k3s_cluster_init_install_script_url: "https://get.k3s.io"
+k3s_cluster_init_install_script_path: /usr/local/sbin/k3s-install.sh
+
+# ---------------------------------------------------------------------------
+# Inventory wiring. The bootstrap host is whichever cluster_servers member
+# sorts first; override if you must promote a different host on rebuild.
+# ---------------------------------------------------------------------------
+k3s_cluster_init_server_group: cluster_servers
+k3s_cluster_init_bootstrap_host: "{{ groups[k3s_cluster_init_server_group] | sort | first }}"
+
+# ---------------------------------------------------------------------------
+# Cluster networking lives on the Contabo Private Network (eth1). Keeping
+# node-ip, advertise-address, kube-vip's ARP advertisement, and Cilium's
+# overlay tunnel off the public NIC avoids paying transit for east-west
+# traffic and keeps etcd quorum on a real L2.
+# ---------------------------------------------------------------------------
+k3s_cluster_init_node_iface: eth1
+# Per-host node IPv4 read from gathered facts. Override in host_vars only if
+# a host's private NIC is named differently.
+k3s_cluster_init_node_ip: "{{ ansible_facts[k3s_cluster_init_node_iface]['ipv4']['address'] }}"
+
+# Pod / Service / DNS CIDRs. Defaults match k3s upstream; changing requires a
+# cluster wipe so commit to these values up front.
+k3s_cluster_init_cluster_cidr: "10.42.0.0/16"
+k3s_cluster_init_service_cidr: "10.43.0.0/16"
+k3s_cluster_init_cluster_dns: "10.43.0.10"
+
+# Node name strategy. inventory_hostname is stable; cloud-init can regenerate
+# the OS hostname on Contabo and break cluster membership otherwise.
+k3s_cluster_init_node_name: "{{ inventory_hostname }}"
+
+# Kubeconfig perms on the server. 0644 lets the deployer user run kubectl
+# without sudo. Tighten if you start fetching the file from external CI/CD.
+k3s_cluster_init_write_kubeconfig_mode: "0644"
+
+# Components disabled at the k3s level. Cilium and future ingress replace
+# them; metrics-server is intentionally NOT in this list (no Cilium overlap).
+k3s_cluster_init_disable:
+  - servicelb
+  - traefik
+
+# kube-proxy is disabled at the k3s level; Cilium runs in kube-proxy
+# replacement mode (kubeProxyReplacement: true in the Helm values).
+k3s_cluster_init_disable_kube_proxy: true
+
+# Cilium is the CNI; flannel and the k3s NetworkPolicy controller are off.
+k3s_cluster_init_flannel_backend: "none"
+k3s_cluster_init_disable_network_policy: true
+
+# API cert SANs. The VIP MUST be present or kubectl-via-VIP rejects the cert.
+# Adding every server hostname lets operators talk directly to a node during
+# maintenance windows.
+k3s_cluster_init_tls_sans: >-
+  {{
+    [k3s_cluster_init_apiserver_vip] +
+    (groups[k3s_cluster_init_server_group] | default([]))
+  }}
+
+# Node taints. Empty list while the single node also runs workloads. When
+# scaling to dedicated control planes, set in group_vars/all.yml to:
+#   k3s_cluster_init_node_taints:
+#     - "node-role.kubernetes.io/control-plane=true:NoSchedule"
+k3s_cluster_init_node_taints: []
+
+# Extra kubelet node-labels. kubelet refuses to self-apply labels under the
+# node-role.kubernetes.io/, kubernetes.io/, or k8s.io/ namespaces — k3s sets
+# node-role.kubernetes.io/control-plane=true on server nodes itself, so the
+# kube-vip DaemonSet's nodeAffinity (Exists on that key) still matches even
+# with this list empty. Use only labels outside those reserved namespaces.
+k3s_cluster_init_node_labels: []
+
+# ---------------------------------------------------------------------------
+# Cilium chart pin.
+# ---------------------------------------------------------------------------
+k3s_cluster_init_cilium_chart_version: "1.16.4"
+k3s_cluster_init_cilium_chart_repo: "https://helm.cilium.io/"
+k3s_cluster_init_cilium_chart_name: "cilium"
+k3s_cluster_init_cilium_namespace: "kube-system"
+
+# Operator replicas: 1 with a single control plane (no peer to fail over to),
+# 2 once cluster_servers has >=2 members. The HelmChart manifest changes when
+# this value changes, so helm-controller rolls the operator on scale-up.
+k3s_cluster_init_cilium_operator_replicas: >-
+  {{ 2 if (groups[k3s_cluster_init_server_group] | length) >= 2 else 1 }}
+
+# Hubble observability. Off by default — adds ~200 MiB of pods.
+k3s_cluster_init_cilium_hubble_enabled: false
+k3s_cluster_init_cilium_hubble_ui_enabled: false
+
+# Routing: VXLAN tunnel matches the firewall_cluster_udp_ports 8472 peer rule.
+# Native routing would need BGP or L2 adjacency for pod CIDRs across hosts.
+k3s_cluster_init_cilium_routing_mode: "tunnel"
+k3s_cluster_init_cilium_tunnel_protocol: "vxlan"
+
+# kube-proxy replacement is the whole point of running Cilium here.
+k3s_cluster_init_cilium_kube_proxy_replacement: true
+
+# BPF host-side masquerade for SNAT of pod egress. Pairs with kpr.
+k3s_cluster_init_cilium_bpf_masquerade: true
+
+# ---------------------------------------------------------------------------
+# kube-vip pin. Interface defaults to the private NIC so the VIP ARPs only
+# on the network where every cluster node can hear it.
+# ---------------------------------------------------------------------------
+k3s_cluster_init_kube_vip_image: "ghcr.io/kube-vip/kube-vip:v0.8.7"
+k3s_cluster_init_vip_interface: "{{ k3s_cluster_init_node_iface }}"
+
+# ---------------------------------------------------------------------------
+# Local kubeconfig export. After bootstrap the controller stores a copy with
+# server: rewritten to the VIP, so kubectl just works against the HA endpoint.
+# ---------------------------------------------------------------------------
+k3s_cluster_init_local_kubeconfig_path: "{{ playbook_dir }}/.kube/config"

@@ -1,0 +1,228 @@
+---
+- name: Assert apiserver VIP is set and valid
+  ansible.builtin.assert:
+    that:
+      - k3s_cluster_init_apiserver_vip is defined
+      - k3s_cluster_init_apiserver_vip | length > 0
+    fail_msg: "k3s_cluster_init_apiserver_vip must be set in group_vars/all.yml."
+  run_once: true
+
+- name: Assert join token is set
+  ansible.builtin.assert:
+    that:
+      - k3s_cluster_init_token is defined
+      - k3s_cluster_init_token | length >= 16
+    fail_msg: >-
+      k3s_cluster_init_token must be vault-encrypted in group_vars/all.yml
+      (ansible-vault encrypt_string '<value>' --name k3s_cluster_init_token).
+  no_log: true
+  run_once: true
+
+- name: Assert server group is populated
+  ansible.builtin.assert:
+    that:
+      - groups[k3s_cluster_init_server_group] is defined
+      - groups[k3s_cluster_init_server_group] | length >= 1
+    fail_msg: "Inventory group {{ k3s_cluster_init_server_group }} must contain at least one host."
+  run_once: true
+
+- name: Assert private NIC fact is present on every host
+  ansible.builtin.assert:
+    that:
+      - ansible_facts[k3s_cluster_init_node_iface] is defined
+      - ansible_facts[k3s_cluster_init_node_iface]['ipv4'] is defined
+      - ansible_facts[k3s_cluster_init_node_iface]['ipv4']['address'] is defined
+    fail_msg: >-
+      Interface {{ k3s_cluster_init_node_iface }} has no IPv4 address on this
+      host. Provision the Contabo Private Network NIC first, or override
+      k3s_cluster_init_node_iface / k3s_cluster_init_node_ip in host_vars.
+
+# Probe etcd-on-disk to make the cluster-init flag decision re-entry-safe.
+# Combined with the inventory-position check below, a host that has already
+# joined the cluster will never get --cluster-init a second time (which would
+# fail loudly: "node has already been bootstrapped").
+- name: Probe for existing etcd data directory
+  ansible.builtin.stat:
+    path: /var/lib/rancher/k3s/server/db/etcd
+  register: k3s_cluster_init_etcd_dir
+
+- name: Compute bootstrap-role facts
+  ansible.builtin.set_fact:
+    k3s_cluster_init_is_bootstrap: "{{ inventory_hostname == k3s_cluster_init_bootstrap_host }}"
+    k3s_cluster_init_already_initialised: "{{ k3s_cluster_init_etcd_dir.stat.exists }}"
+
+# Only the bootstrap host pre-stages auto-deploy manifests. Putting them on
+# every server would let two helm-controllers race for the same chart.
+- name: Ensure k3s server manifests directory exists
+  ansible.builtin.file:
+    path: /var/lib/rancher/k3s/server/manifests
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Stage kube-vip RBAC manifest
+  ansible.builtin.copy:
+    src: kube-vip-rbac.yaml
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip-rbac.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Render kube-vip DaemonSet manifest
+  ansible.builtin.template:
+    src: kube-vip-daemonset.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/kube-vip.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Render Cilium HelmChart manifest
+  ansible.builtin.template:
+    src: cilium-helmchart.yaml.j2
+    dest: /var/lib/rancher/k3s/server/manifests/cilium.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Ensure /etc/rancher/k3s exists
+  ansible.builtin.file:
+    path: /etc/rancher/k3s
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+# Declarative config wins over INSTALL_K3S_EXEC: a manual systemctl restart
+# rereads this file, and the desired state is one cat away from auditable.
+- name: Render k3s config.yaml
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /etc/rancher/k3s/config.yaml
+    owner: root
+    group: root
+    mode: "0600"
+  notify: Reload k3s server
+
+- name: Cache k3s install script
+  ansible.builtin.get_url:
+    url: "{{ k3s_cluster_init_install_script_url }}"
+    dest: "{{ k3s_cluster_init_install_script_path }}"
+    owner: root
+    group: root
+    mode: "0755"
+    force: false
+
+# The bootstrap server runs the installer with no K3S_URL so it does
+# --cluster-init (set in config.yaml). creates: makes re-runs a no-op once
+# the k3s binary exists; to upgrade, bump k3s_cluster_init_version and run
+# the installer manually with INSTALL_K3S_FORCE_RESTART=true.
+- name: Install k3s on the bootstrap server
+  ansible.builtin.command: "{{ k3s_cluster_init_install_script_path }}"
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_cluster_init_version }}"
+    INSTALL_K3S_EXEC: "server"
+    K3S_TOKEN: "{{ k3s_cluster_init_token }}"
+  args:
+    creates: /usr/local/bin/k3s
+  when: k3s_cluster_init_is_bootstrap
+
+# Wait for the API on the private node IP BEFORE waiting for the VIP. The
+# API binds first; kube-vip is just a pod that starts moments later and
+# only then ARPs the VIP. Joining servers can't connect until both happen.
+- name: Wait for k3s API on the private node IP
+  ansible.builtin.wait_for:
+    host: "{{ k3s_cluster_init_node_ip }}"
+    port: 6443
+    timeout: 180
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Wait for kube-vip to claim the VIP
+  ansible.builtin.wait_for:
+    host: "{{ k3s_cluster_init_apiserver_vip }}"
+    port: 6443
+    timeout: 180
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Install k3s on joining servers (via VIP)
+  ansible.builtin.command: "{{ k3s_cluster_init_install_script_path }}"
+  environment:
+    INSTALL_K3S_VERSION: "{{ k3s_cluster_init_version }}"
+    INSTALL_K3S_EXEC: "server"
+    K3S_TOKEN: "{{ k3s_cluster_init_token }}"
+    K3S_URL: "https://{{ k3s_cluster_init_apiserver_vip }}:6443"
+  args:
+    creates: /usr/local/bin/k3s
+  when: not k3s_cluster_init_is_bootstrap
+
+- name: Wait for kubelet readiness on every server
+  ansible.builtin.wait_for:
+    path: /var/lib/rancher/k3s/agent/kubelet.kubeconfig
+    state: present
+    timeout: 120
+
+- name: Read kubeconfig from the bootstrap server
+  ansible.builtin.slurp:
+    src: /etc/rancher/k3s/k3s.yaml
+  register: k3s_cluster_init_kubeconfig_raw
+  when: k3s_cluster_init_is_bootstrap
+  no_log: true
+
+- name: Ensure local kubeconfig directory exists on the controller
+  ansible.builtin.file:
+    path: "{{ k3s_cluster_init_local_kubeconfig_path | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Write kubeconfig to the controller with server rewritten to the VIP
+  ansible.builtin.copy:
+    content: >-
+      {{
+        (k3s_cluster_init_kubeconfig_raw.content | b64decode)
+        | replace('https://127.0.0.1:6443',
+                  'https://' ~ k3s_cluster_init_apiserver_vip ~ ':6443')
+      }}
+    dest: "{{ k3s_cluster_init_local_kubeconfig_path }}"
+    mode: "0600"
+  delegate_to: localhost
+  become: false
+  run_once: true
+  when: k3s_cluster_init_is_bootstrap
+  no_log: true
+
+# Verification block. changed_when: false because these are inspections;
+# retries cope with slow image pulls on the first run.
+- name: Wait for all nodes to report Ready
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s kubectl get nodes --no-headers
+  register: k3s_cluster_init_node_status
+  changed_when: false
+  retries: 30
+  delay: 10
+  until: >-
+    k3s_cluster_init_node_status.stdout_lines | length >=
+      (groups[k3s_cluster_init_server_group] | length)
+    and (k3s_cluster_init_node_status.stdout_lines
+         | map('regex_search', '\\bReady\\b') | select | list | length
+         == (groups[k3s_cluster_init_server_group] | length))
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Wait for Cilium DaemonSet rollout
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s kubectl -n {{ k3s_cluster_init_cilium_namespace }} rollout status ds/cilium --timeout=300s
+  changed_when: false
+  when: k3s_cluster_init_is_bootstrap
+
+- name: Wait for kube-vip DaemonSet rollout
+  ansible.builtin.command:
+    cmd: /usr/local/bin/k3s kubectl -n kube-system rollout status ds/kube-vip-ds --timeout=120s
+  changed_when: false
+  when: k3s_cluster_init_is_bootstrap

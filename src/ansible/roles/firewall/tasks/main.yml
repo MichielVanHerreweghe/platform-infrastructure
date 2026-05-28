@@ -66,13 +66,14 @@
   loop: "{{ firewall_public_udp_ports }}"
 
 # Cluster-internal ports: only opened to other nodes in the peer group. Each
-# peer's IPv4 is taken from facts (ansible_default_ipv4.address), which means
-# the playbook must run with gather_facts on every cluster host before the
-# rules become accurate. The peer self is skipped.
+# peer's IPv4 is taken from facts on firewall_cluster_peer_iface (the private
+# NIC), so the rules match the addresses k3s, etcd, kubelet, Cilium, and
+# kube-vip actually use. The playbook must run with gather_facts on every
+# cluster host before the rules become accurate. The peer self is skipped.
 - name: Allow cluster TCP ports from each peer
   community.general.ufw:
     rule: allow
-    from_ip: "{{ hostvars[item.0].ansible_default_ipv4.address }}"
+    from_ip: "{{ hostvars[item.0].ansible_facts[firewall_cluster_peer_iface].ipv4.address }}"
     port: "{{ item.1 }}"
     proto: tcp
     comment: "cluster peer {{ item.0 }}"
@@ -81,12 +82,13 @@
     label: "{{ item.0 }}:{{ item.1 }}/tcp"
   when:
     - item.0 != inventory_hostname
-    - hostvars[item.0].ansible_default_ipv4 is defined
+    - hostvars[item.0].ansible_facts[firewall_cluster_peer_iface] is defined
+    - hostvars[item.0].ansible_facts[firewall_cluster_peer_iface].ipv4 is defined
 
 - name: Allow cluster UDP ports from each peer
   community.general.ufw:
     rule: allow
-    from_ip: "{{ hostvars[item.0].ansible_default_ipv4.address }}"
+    from_ip: "{{ hostvars[item.0].ansible_facts[firewall_cluster_peer_iface].ipv4.address }}"
     port: "{{ item.1 }}"
     proto: udp
     comment: "cluster peer {{ item.0 }}"
@@ -95,7 +97,8 @@
     label: "{{ item.0 }}:{{ item.1 }}/udp"
   when:
     - item.0 != inventory_hostname
-    - hostvars[item.0].ansible_default_ipv4 is defined
+    - hostvars[item.0].ansible_facts[firewall_cluster_peer_iface] is defined
+    - hostvars[item.0].ansible_facts[firewall_cluster_peer_iface].ipv4 is defined
 
 - name: Enable ufw
   community.general.ufw:

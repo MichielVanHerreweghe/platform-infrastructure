@@ -1,0 +1,52 @@
+# Managed by Ansible (k3s_cluster_init role). Do not edit by hand.
+write-kubeconfig-mode: "{{ k3s_cluster_init_write_kubeconfig_mode }}"
+token: "{{ k3s_cluster_init_token }}"
+
+node-name: "{{ k3s_cluster_init_node_name }}"
+node-ip: "{{ k3s_cluster_init_node_ip }}"
+advertise-address: "{{ k3s_cluster_init_node_ip }}"
+# Pin the flannel interface for the (disabled) builtin path so it never
+# auto-detects the public NIC if flannel-backend is ever re-enabled.
+flannel-iface: "{{ k3s_cluster_init_node_iface }}"
+
+cluster-cidr: "{{ k3s_cluster_init_cluster_cidr }}"
+service-cidr: "{{ k3s_cluster_init_service_cidr }}"
+cluster-dns: "{{ k3s_cluster_init_cluster_dns }}"
+
+flannel-backend: "{{ k3s_cluster_init_flannel_backend }}"
+{% if k3s_cluster_init_disable_network_policy %}
+disable-network-policy: true
+{% endif %}
+{% if k3s_cluster_init_disable_kube_proxy %}
+disable-kube-proxy: true
+{% endif %}
+
+disable:
+{% for component in k3s_cluster_init_disable %}
+  - {{ component }}
+{% endfor %}
+
+tls-san:
+{% for san in k3s_cluster_init_tls_sans %}
+  - "{{ san }}"
+{% endfor %}
+
+{% if k3s_cluster_init_node_labels %}
+node-label:
+{% for label in k3s_cluster_init_node_labels %}
+  - "{{ label }}"
+{% endfor %}
+{% endif %}
+
+{% if k3s_cluster_init_node_taints %}
+node-taint:
+{% for taint in k3s_cluster_init_node_taints %}
+  - "{{ taint }}"
+{% endfor %}
+{% endif %}
+
+{% if k3s_cluster_init_is_bootstrap and not k3s_cluster_init_already_initialised %}
+cluster-init: true
+{% elif not k3s_cluster_init_is_bootstrap %}
+server: "https://{{ k3s_cluster_init_apiserver_vip }}:6443"
+{% endif %}

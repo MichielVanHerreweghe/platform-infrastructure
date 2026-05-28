@@ -7,9 +7,16 @@ firewall_cluster_tcp_ports: []
 firewall_cluster_udp_ports: []
 
 # Inventory group whose members are treated as cluster peers. Each peer's
-# ansible_host (resolved to an IPv4 address via facts) is added to the allow
-# list for cluster_* ports.
+# IPv4 on firewall_cluster_peer_iface is added to the allow list for
+# cluster_* ports.
 firewall_cluster_peer_group: cluster_servers
+
+# Interface used for inter-node cluster traffic (k3s, etcd, kubelet, Cilium
+# VXLAN, kube-vip ARP). Defaults to the Contabo Private Network NIC so that
+# east-west traffic never traverses the public interface. Must match
+# k3s_cluster_init_node_iface; override in group_vars/all.yml if a host
+# names its private NIC differently.
+firewall_cluster_peer_iface: eth1
 
 # DEFAULT_FORWARD_POLICY in /etc/default/ufw. K3s + Cilium need forwarded
 # traffic permitted; ufw's stock DROP would break pod networking.

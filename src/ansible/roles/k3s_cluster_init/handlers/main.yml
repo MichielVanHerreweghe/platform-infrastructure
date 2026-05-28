@@ -1,0 +1,9 @@
+---
+# SIGHUP-only on purpose. A full systemd restart drops the API server and
+# churns pod sandboxes; on a single-server cluster that briefly stops the
+# entire control plane. k3s reloads most /etc/rancher/k3s/config.yaml fields
+# on SIGHUP. Changes that genuinely need a restart (e.g. node-ip change,
+# removing cluster-init) are out-of-band maintenance.
+- name: Reload k3s server
+  ansible.builtin.command: systemctl kill --signal=SIGHUP k3s
+  changed_when: true
